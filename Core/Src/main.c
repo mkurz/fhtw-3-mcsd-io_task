@@ -87,6 +87,9 @@ int main(void)
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
 
+  // First, let's turn off all 3 RGB LEDs
+  HAL_GPIO_WritePin(GPIOA, RGB_LED_BLUE_Pin|RGB_LED_RED_Pin|RGB_LED_GREEN_Pin, GPIO_PIN_SET);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
