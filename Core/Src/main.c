@@ -42,14 +42,15 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+int leds_on = 1; // Global state if the LED are switched on or off
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
-
+void blinky(int, int);
+int buttoncheck(int, int);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -90,12 +91,37 @@ int main(void)
   // First, let's turn off all 3 RGB LEDs
   HAL_GPIO_WritePin(GPIOA, RGB_LED_BLUE_Pin|RGB_LED_RED_Pin|RGB_LED_GREEN_Pin, GPIO_PIN_SET);
 
+  enum LED {
+    RED,
+    GREEN,
+    BLUE
+  };
+
+  // Start values
+  int current_color = RED;
+  int brightness_level = 0; // Three brightness levels can be used: 0 (lowest), 1 (middle), 2 (highest)
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    blinky(current_color, brightness_level); // Let the current LED shine in the current brightness
+
+    if(buttoncheck(current_color, brightness_level)) { // Was button pressed?
+      if(brightness_level == 2) { // Did we reach the "last" brightness?
+        brightness_level = 0; // If yes, let's start with the first brightness again
+        // Also switch to next color
+        if(current_color == BLUE) { // Did we reach the last color?
+          current_color = RED; // Let's start with red again
+        } else {
+          current_color++;
+        }
+      } else {
+        brightness_level++;
+      }
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -176,6 +202,79 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  Makes the given LED shine with the given brightness level (0, 1 or 2), implemented via software Pulse Width Modulation (PWM).
+  *         This method takes (technically: at least) 22 ms to run.
+  * @param  color: The color of the RGB LED to use (0=red, 1=green, 2=blue)
+  * @param  brightness_level: Possible values: 0, 1, 2
+  * @retval None
+  */
+void blinky(int color, int brightness_level) {
+  if(!leds_on) {
+    return; // If LEDs were turned off globally, this method does not need to run.
+  }
+
+  // Correct (possible) wrong parameters
+  if(color < 0) {
+    color = 0;
+  } else if(color > 2) {
+    color = 2;
+  }
+  if(brightness_level < 0) {
+    brightness_level = 0;
+  } else if(brightness_level > 2) {
+    brightness_level = 2;
+  }
+
+  int led[3]      = {RGB_LED_RED_Pin, RGB_LED_GREEN_Pin, RGB_LED_BLUE_Pin};
+  int on_time[3]  = {2 , 12, 20 };
+  int off_time[3] = {20, 10, 2 };
+
+  HAL_GPIO_TogglePin(GPIOA, led[color]); // Turn desired LED on
+  HAL_Delay(on_time[brightness_level]);  // Keep on for x milliseconds
+  HAL_GPIO_TogglePin(GPIOA, led[color]); // Turn LED off
+  HAL_Delay(off_time[brightness_level]); // Keep off for x milliseconds
+  // In the end delays were 22 ms in total
+}
+
+/**
+  * @brief  Checks and returns if the button was pressed or, when button was pressed for one second, turns off the LEDs. Also handles debouncing.
+  * @param  color: The color of the RGB LED to use (0=red, 1=green, 2=blue)
+  * @param  brightness_level: Possible values: 0, 1, 2
+  * @retval status:  - 0  button was not pressed.
+  *                  - 1  button was pressed.
+  */
+int buttoncheck(int color, int brightness_level) {
+  int leds_on_before_button_press = leds_on; // Were the LEDs on before the button was pressed?
+  int button_pressed = 0; // The return value: If the button was "pressed". However, for us, the button was not "pressed" when held longer than 1 second.
+  int while_logic_done = 0;
+
+  int counter = 0;
+  while(!HAL_GPIO_ReadPin(BUTTON_GPIO_Port, BUTTON_Pin)) { // While the button is pressed
+    if(!while_logic_done) {
+      if(counter > 45) { // Button was pressed and held for ~1 second (see calculation in comment, when calling blinky, below)
+        if (leds_on_before_button_press) { // Were LEDs on before even touching the button?
+          leds_on = 0; // Turn LEDs off (globally)
+          button_pressed = 0; // Do not change brightness anymore (with this line the main method will later not handle this button press)
+        }
+        while_logic_done = 1; // Nothing to do in this while anymore, let's safe CPU cycles, just keep blinking as long as the button is pressed ;)
+      } else if(counter > 3 && !button_pressed) { // Debouncing: blinky was called 3 times (22 ms x 3) so after that delay we are sure the Button was pressed
+        if(leds_on_before_button_press) {
+          button_pressed = 1;
+          // Here, the while logic is not done here yet, because user could keep pressing the button
+        } else {
+          leds_on = 1; // In case the LEDs were off, we switch them on again
+          while_logic_done = 1; // Again, nothing to do in this while anymore, just keep blinking as long as the button is still pressed
+        }
+      }
+      counter++;
+    }
+    // blinky needs 22 milliseconds to finish one run -> calling blinky 46 times x 22 ms each = at least 1012 ms (~1 second) have passed
+    blinky(color, brightness_level); // While pressing the button, we keep the LEDs on
+  }
+  return button_pressed;
+}
 
 /* USER CODE END 4 */
 
